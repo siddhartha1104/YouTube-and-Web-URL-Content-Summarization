@@ -12,8 +12,7 @@ import time
 from bs4 import BeautifulSoup
 import urllib.parse
 
-# Configure Groq API
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# Configure Groq API URL
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Initialize session state for chat history and content storage
@@ -31,6 +30,8 @@ if 'url_type' not in st.session_state:
     st.session_state.url_type = None
 if 'page_title' not in st.session_state:
     st.session_state.page_title = ""
+if 'groq_api_key' not in st.session_state:
+    st.session_state.groq_api_key = ""
 
 # Function to split text into chunks of approximately equal size
 def split_into_chunks(text, max_chunk_size=4000):
@@ -239,8 +240,15 @@ def extract_webpage_content(url):
 
 # Generate content summary using Groq API
 def generate_groq_content(content_text, prompt, model="llama3-70b-8192"):
+    # Get API key from session state
+    api_key = st.session_state.groq_api_key
+    
+    if not api_key:
+        st.error("Groq API key is missing. Please enter your API key in the sidebar.")
+        return "Error: API key is missing"
+    
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
     
@@ -292,9 +300,16 @@ def answer_question(question):
         question=question
     )
     
+    # Get API key from session state
+    api_key = st.session_state.groq_api_key
+    
+    if not api_key:
+        st.error("Groq API key is missing. Please enter your API key in the sidebar.")
+        return "Error: API key is missing"
+    
     # Generate answer using Groq API with memory-aware prompt
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
     
@@ -437,28 +452,52 @@ def clear_conversation():
         st.session_state.chat_history = []
     st.success("Conversation history cleared!")
 
+# Function to save API key to session state
+def save_api_key():
+    st.session_state.groq_api_key = st.session_state.groq_api_key_input
+    st.success("API key saved!")
+
 # Main Streamlit app
 st.title("Content Chatbot with Memory")
 st.write("Enter any URL to extract content and chat with it. The chatbot will remember your conversation history!")
 
 # Sidebar for URL input and processing
 with st.sidebar:
+    st.header("Setup")
+    
+    # API Key input field
+    st.subheader("Groq API Key")
+    api_key_input = st.text_input(
+        "Enter your Groq API Key:", 
+        type="password",
+        key="groq_api_key_input",
+        help="Get your API key from https://console.groq.com/keys"
+    )
+    if st.button("Save API Key"):
+        save_api_key()
+    
+    st.divider()
+    
     st.header("Content Source")
     url = st.text_input("Enter URL (YouTube, Wikipedia, or any webpage):")
     
     if st.button("Process URL"):
-        st.session_state.url_processed = False
-        st.session_state.chat_history = []
-        
-        if process_url(url):
-            summary = summarize_content()
-            st.session_state.url_processed = True
+        # First check if API key is available
+        if not st.session_state.groq_api_key:
+            st.error("Please enter your Groq API key first!")
+        else:
+            st.session_state.url_processed = False
+            st.session_state.chat_history = []
             
-            # Add system message to chat history
-            st.session_state.chat_history.append({
-                "role": "assistant", 
-                "content": f"I've analyzed the content from {st.session_state.content_source}. Here's a summary:\n\n{summary}\n\nYou can now ask me questions about this content!"
-            })
+            if process_url(url):
+                summary = summarize_content()
+                st.session_state.url_processed = True
+                
+                # Add system message to chat history
+                st.session_state.chat_history.append({
+                    "role": "assistant", 
+                    "content": f"I've analyzed the content from {st.session_state.content_source}. Here's a summary:\n\n{summary}\n\nYou can now ask me questions about this content!"
+                })
     
     if st.session_state.url_processed:
         st.success(f"Content processed: {st.session_state.page_title}")
@@ -515,4 +554,4 @@ if st.session_state.url_processed:
         # Add assistant response to chat history
         st.session_state.chat_history.append({"role": "assistant", "content": answer})
 else:
-    st.info("Please process a URL first to start chatting about its content.")
+    st.info("Please enter your Groq API key and process a URL first to start chatting about its content.")
